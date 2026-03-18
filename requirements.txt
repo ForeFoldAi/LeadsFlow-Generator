@@ -1,0 +1,21 @@
+# ── FastAPI & ASGI server ─────────────────────────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9          # form/file upload support
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy[asyncio]>=2.0.0
+alembic>=1.13.0
+aiosqlite>=0.20.0                # async SQLite driver (development)
+asyncpg>=0.29.0                  # async PostgreSQL driver (production)
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+pydantic-settings>=2.2.0
+
+# ── Scraping (unchanged from original) ───────────────────────────────────────
+playwright>=1.42.0
+requests>=2.31.0
+
+# ── Data / Export ─────────────────────────────────────────────────────────────
+pandas>=2.0.0
+openpyxl>=3.1.0

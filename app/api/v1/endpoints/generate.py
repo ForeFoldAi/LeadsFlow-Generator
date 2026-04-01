@@ -18,7 +18,7 @@ from app.services import session_store
 
 router = APIRouter()
 
-ALL_SOURCES = ["google", "yelp", "yellowpages", "bbb",
+ALL_SOURCES = ["google", "yelp", "yellowpages", "bbb", "sulekha",
                "linkedin", "facebook", "instagram", "twitter", "apollo"]
 DEFAULT_SOURCES = ["google", "yelp", "yellowpages", "bbb"]
 

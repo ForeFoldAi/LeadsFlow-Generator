@@ -20,6 +20,7 @@ class ScrapeRequest(BaseModel):
 
     keyword: str = Field(..., examples=["plumbers"], description="Search keyword, e.g. 'plumbers'")
     location: str = Field(..., examples=["Austin, TX"], description="City/region, e.g. 'Austin, TX'")
+    user_id: Optional[str] = Field(default=None, description="User ID for per-user duplicate checking")
 
     sources: Optional[List[str]] = Field(
         default=None,
@@ -54,7 +55,9 @@ class JobRead(BaseModel):
     max_per_source: int
     min_score: float
     country: str
+    user_id: Optional[str] = None
     total_found: int
+    duplicate_count: int = 0
     error_message: Optional[str] = ""
     created_at: datetime
     updated_at: datetime

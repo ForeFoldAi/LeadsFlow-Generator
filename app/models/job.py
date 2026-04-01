@@ -22,11 +22,13 @@ class ScrapeJob(Base):
     max_per_source = Column(Integer, nullable=False, default=25)
     min_score = Column(Float, nullable=False, default=0.0)
     country = Column(String(100), nullable=False, default="India")
+    user_id = Column(String(100), nullable=True, index=True)
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
     # pending | running | completed | failed
     status = Column(String(20), nullable=False, default="pending")
     total_found = Column(Integer, nullable=False, default=0)
+    duplicate_count = Column(Integer, nullable=False, default=0)
     error_message = Column(Text, nullable=True, default="")
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

@@ -33,6 +33,7 @@ SOURCES = {
     "yelp":        ("Yelp",         "app.scrapers.yelp",        "YelpScraper"),
     "yellowpages": ("Yellow Pages", "app.scrapers.yellowpages", "YellowPagesScraper"),
     "bbb":         ("BBB",          "app.scrapers.bbb",         "BBBScraper"),
+    "sulekha":     ("Sulekha",      "app.scrapers.sulekha",     "SulekhaScraper"),
     "linkedin":    ("LinkedIn",     "app.scrapers.linkedin",    "LinkedInScraper"),
     "facebook":    ("Facebook",     "app.scrapers.facebook",    "FacebookScraper"),
     "instagram":   ("Instagram",    "app.scrapers.instagram",   "InstagramScraper"),
@@ -184,15 +185,11 @@ def lead_to_leadsflow(lead: Lead, keyword: str = "", country: str = "India") -> 
         domain_match.group(1) if domain_match else (lead.category or keyword), 100
     )
 
-    # Additional Notes: score info, plain text, max 200 chars
+    # Additional Notes: sector hint only
     sector_hint = _detect_sector_hint(lead.name, lead.category, keyword)
-    tier_plain  = re.sub(r"[^a-zA-Z ]", "", lead.tier or "").strip()
     notes_parts = []
-    if tier_plain:       notes_parts.append(f"Tier {tier_plain}")
-    if lead.lead_score:  notes_parts.append(f"Score {lead.lead_score} of 100")
-    if lead.rating:      notes_parts.append(f"Rating {lead.rating} stars")
-    if lead.reviews:     notes_parts.append(f"Reviews {lead.reviews}")
-    if sector_hint:      notes_parts.append(f"Sector {sector_hint}")
+    if sector_hint:
+        notes_parts.append(f"Sector {sector_hint}")
     notes = _sanitize(". ".join(notes_parts), 200)
 
     return {
@@ -253,15 +250,20 @@ def deduplicate(leads: list) -> list:
 
 # ── Main Engine ───────────────────────────────────────────────────────────────
 
+# Sources whose data quality benefits from Google Maps enrichment
+_ENRICHABLE_SOURCES = {"sulekha", "yellowpages", "yelp", "bbb"}
+
+
 class LeadEngine:
     def __init__(self, sources=None, max_per_source=30, delay=1.5,
-                 headless=True, min_score=0.0, country="India"):
+                 headless=True, min_score=0.0, country="India", enrich=True):
         self.sources        = sources or ALL_SOURCES
         self.max_per_source = max_per_source
         self.delay          = delay
         self.headless       = headless
         self.min_score      = min_score
         self.country        = country
+        self.enrich         = enrich
         self.leads          = []
         self._keyword       = ""
 
@@ -288,12 +290,58 @@ class LeadEngine:
         print(f"  🚀  {keyword}  in  {location}")
         print(f"  Sources: {', '.join(self.sources)}  |  Max/src: {self.max_per_source}")
         print(f"{'═'*62}\n")
-        all_raw = []
-        for src in self.sources:
-            all_raw.extend(await self._run_one(src, keyword, location))
+
+        enrichable = _ENRICHABLE_SOURCES.intersection(self.sources)
+        should_enrich = self.enrich and bool(enrichable)
+
+        # Tag each task with its source key so we know which results are enrichable
+        async def _run_tagged(src):
+            leads = await self._run_one(src, keyword, location)
+            return src, leads
+
+        scrape_tasks = [
+            asyncio.create_task(_run_tagged(src)) for src in self.sources
+        ]
+
+        all_raw: list = []
+        enrich_tasks: list = []
+
+        if should_enrich:
+            from app.scrapers.enrichment import LeadEnrichmentPipeline
+            pipeline = LeadEnrichmentPipeline(delay=self.delay, concurrency=8)
+            print(f"  →  enriching as sources complete…", flush=True)
+            try:
+                async with pipeline.stream(headless=self.headless) as enrich_fn:
+                    # Process each source the moment it finishes
+                    for coro in asyncio.as_completed(scrape_tasks):
+                        src, leads = await coro
+                        all_raw.extend(leads)
+                        if leads and src in enrichable:
+                            # Fire-and-forget enrichment task; browser stays open
+                            t = asyncio.create_task(enrich_fn(leads))
+                            enrich_tasks.append(t)
+                    # Wait for all in-flight enrichment before closing browser
+                    if enrich_tasks:
+                        await asyncio.gather(*enrich_tasks)
+            except Exception as exc:
+                print(f"  ⚠️   enrichment skipped ({exc})")
+        else:
+            results = await asyncio.gather(*scrape_tasks)
+            for _src, leads in results:
+                all_raw.extend(leads)
+
         print(f"\n  📦  Raw: {len(all_raw)}  →  dedup: ", end="")
         unique = deduplicate(all_raw)
-        print(len(unique), end="  →  ranked: ")
+        print(len(unique), end="")
+
+        if should_enrich and enrich_tasks:
+            # Post-enrichment dedup (phone/website/address keys)
+            from app.scrapers.enrichment import LeadEnrichmentPipeline
+            unique = LeadEnrichmentPipeline._deduplicate(unique)
+            enriched_count = sum(1 for l in unique if l.enriched_from)
+            print(f"  →  enriched: {enriched_count}", end="")
+
+        print(f"  →  ranked: ", end="")
         self.leads = rank_leads(unique, min_score=self.min_score)
         print(len(self.leads))
         return self.leads
@@ -343,24 +391,12 @@ class LeadEngine:
                 cell.fill = hfill; cell.font = hfont
                 cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             ws.row_dimensions[1].height = 42
-            tier_fills = {
-                "Hot":      PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"),
-                "Strong":   PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid"),
-                "Good":     PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid"),
-                "Moderate": PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid"),
-                "Weak":     PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"),
-            }
             alt = [PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid"),
                    PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")]
             bfont  = Font(name="Arial", size=9)
             border = Border(bottom=Side(style="thin", color="DDDDDD"))
-            notes_idx = LEADSFLOW_COLUMNS.index("Additional Notes")
             for i, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), 1):
-                notes_val = str(row[notes_idx].value or "")
                 fill = alt[i % 2]
-                for lbl, tfill in tier_fills.items():
-                    if f"Tier {lbl}" in notes_val:
-                        fill = tfill; break
                 for cell in row:
                     cell.fill = fill; cell.font = bfont
                     cell.border = border
@@ -375,16 +411,14 @@ class LeadEngine:
 
     def print_summary(self, top_n=20):
         if not self.leads: print("No leads."); return
-        print(f"\n{'─'*95}")
-        print(f"{'#':<4} {'Score':>6} {'Tier':<12} {'Name':<30} {'Phone':<16} {'City'}")
-        print(f"{'─'*95}")
+        print(f"\n{'─'*75}")
+        print(f"{'#':<4} {'Name':<30} {'Phone':<16} {'City'}")
+        print(f"{'─'*75}")
         for i, l in enumerate(self.leads[:top_n], 1):
-            tier_clean = re.sub(r"[^\x00-\x7F]", "", l.tier)
-            print(f"{i:<4} {l.lead_score:>6.1f} {tier_clean:<12} "
-                  f"{l.name[:28]:<30} {(l.phone or ''):<16} {l.city or ''}")
+            print(f"{i:<4} {l.name[:28]:<30} {(l.phone or ''):<16} {l.city or ''}")
         if len(self.leads) > top_n:
             print(f"  … and {len(self.leads)-top_n} more in export file.")
 
     def print_top_scorecards(self, n=3):
-        print(f"\n{'═'*55}\n  🏆  Top {n} Scorecards\n{'═'*55}")
-        for l in self.leads[:n]: print_scorecard(l)
+        """No-op: scoring removed."""
+        pass

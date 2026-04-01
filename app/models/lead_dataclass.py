@@ -24,7 +24,7 @@ class Lead:
     state: str = ""
     zip_code: str = ""
 
-    # ── Reputation ────────────────────────────────────────
+    # ── Reputation (kept for merge logic, not displayed) ──
     rating: float = 0.0
     reviews: int = 0
     hours: str = ""
@@ -33,15 +33,9 @@ class Lead:
     sources: str = ""          # comma-separated list of sources found in
     source_urls: str = ""      # comma-separated URLs
 
-    # ── Lead Scoring ──────────────────────────────────────
-    lead_score: float = 0.0         # 0–100 composite score
-    tier: str = ""                  # 🏆 Hot / 🔥 Strong / ✅ Good / 👀 Moderate / ❄️ Weak
-    score_rating: float = 0.0       # sub-score: star rating quality
-    score_reviews: float = 0.0      # sub-score: review volume authority
-    score_contact: float = 0.0      # sub-score: contact info richness
-    score_sources: float = 0.0      # sub-score: multi-source credibility
-    score_engagement: float = 0.0   # sub-score: rating × volume engagement
-    score_profile: float = 0.0      # sub-score: profile completeness
+    # ── Enrichment ────────────────────────────────────────
+    enriched_from:    str   = ""    # e.g. "Google Maps"
+    confidence_score: float = 0.0  # 0.0–1.0 match confidence from enrichment
 
     # ── Meta ──────────────────────────────────────────────
     scraped_at: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M"))
@@ -69,7 +63,7 @@ class Lead:
                      "state", "zip_code", "hours", "category"]:
             if not getattr(self, attr) and getattr(other, attr):
                 setattr(self, attr, getattr(other, attr))
-        # Take higher rating/reviews if both have data
+        # Take higher rating/reviews if both have data (used internally for merge only)
         if other.rating and (not self.rating or other.rating > self.rating):
             self.rating = other.rating
         if other.reviews > self.reviews:

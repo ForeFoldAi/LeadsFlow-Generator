@@ -27,10 +27,18 @@ async def run_scrape_job(
     Background coroutine: run all scrapers, score leads, persist to DB.
     Called by FastAPI BackgroundTasks — runs after the HTTP response is sent.
     """
+    import re
+
     from app.core.database import AsyncSessionLocal
     from app.models.job import ScrapeJob
     from app.models.lead import Lead as LeadModel
     from sqlalchemy import select
+
+    def _norm_phone(p: str) -> str:
+        return re.sub(r"\D", "", p or "")
+
+    def _norm_key(name: str, city: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", (name or "").lower()) + "|" + re.sub(r"[^a-z0-9]", "", (city or "").lower())
 
     async with AsyncSessionLocal() as db:
         # ── Mark job as running ───────────────────────────────────────────────
@@ -56,8 +64,51 @@ async def run_scrape_job(
             )
             leads = await engine.run(keyword, location)
 
-            # ── Persist scored leads ──────────────────────────────────────────
+            # ── Load existing leads for this user to detect duplicates ────────
+            existing_phones: set = set()
+            existing_name_city: set = set()
+            if job.user_id:
+                # Check 1: Generator's own scraped_leads table
+                existing_q = (
+                    select(LeadModel.phone, LeadModel.name, LeadModel.city)
+                    .join(ScrapeJob, LeadModel.job_id == ScrapeJob.id)
+                    .where(ScrapeJob.user_id == job.user_id)
+                )
+                existing_res = await db.execute(existing_q)
+                for row in existing_res.all():
+                    ph = _norm_phone(row.phone)
+                    if ph:
+                        existing_phones.add(ph)
+                    key = _norm_key(row.name, row.city)
+                    if key != "|":
+                        existing_name_city.add(key)
+
+                # Check 2: CRM leads table (manually added / imported leads)
+                from sqlalchemy import text
+                crm_q = text(
+                    "SELECT phone_number, name, city FROM leads WHERE user_id = :uid"
+                )
+                crm_res = await db.execute(crm_q, {"uid": job.user_id})
+                for row in crm_res.all():
+                    ph = _norm_phone(row.phone_number)
+                    if ph:
+                        existing_phones.add(ph)
+                    key = _norm_key(row.name, row.city)
+                    if key != "|":
+                        existing_name_city.add(key)
+
+            # ── Persist scored leads (skip duplicates) ────────────────────────
+            duplicate_count = 0
             for lead in leads:
+                ph = _norm_phone(lead.phone)
+                key = _norm_key(lead.name, lead.city)
+                if job.user_id and (
+                    (ph and ph in existing_phones)
+                    or (key != "|" and key in existing_name_city)
+                ):
+                    duplicate_count += 1
+                    continue
+
                 db_lead = LeadModel(
                     id=str(uuid.uuid4()),
                     job_id=job_id,
@@ -70,26 +121,25 @@ async def run_scrape_job(
                     city=lead.city,
                     state=lead.state,
                     zip_code=lead.zip_code,
-                    rating=lead.rating,
-                    reviews=lead.reviews,
-                    hours=lead.hours,
+                    hours=getattr(lead, 'hours', ''),
                     sources=lead.sources,
                     source_urls=lead.source_urls,
-                    lead_score=lead.lead_score,
-                    tier=lead.tier,
-                    score_rating=lead.score_rating,
-                    score_reviews=lead.score_reviews,
-                    score_contact=lead.score_contact,
-                    score_sources=lead.score_sources,
-                    score_engagement=lead.score_engagement,
-                    score_profile=lead.score_profile,
+                    enriched_from=lead.enriched_from,
+                    confidence_score=lead.confidence_score,
                     scraped_at=lead.scraped_at,
                     created_at=datetime.utcnow(),
                 )
                 db.add(db_lead)
+                # Track newly added leads in-memory to prevent duplicates
+                # within this same batch
+                if ph:
+                    existing_phones.add(ph)
+                if key != "|":
+                    existing_name_city.add(key)
 
             job.status = "completed"
-            job.total_found = len(leads)
+            job.total_found = len(leads) - duplicate_count
+            job.duplicate_count = duplicate_count
             job.completed_at = datetime.utcnow()
             job.updated_at = datetime.utcnow()
             await db.commit()
@@ -128,19 +178,10 @@ def leads_to_leadsflow_rows(
             city=dl.city or "",
             state=dl.state or "",
             zip_code=dl.zip_code or "",
-            rating=dl.rating or 0.0,
-            reviews=dl.reviews or 0,
-            hours=dl.hours or "",
             sources=dl.sources or "",
             source_urls=dl.source_urls or "",
-            lead_score=dl.lead_score or 0.0,
-            tier=dl.tier or "",
-            score_rating=dl.score_rating or 0.0,
-            score_reviews=dl.score_reviews or 0.0,
-            score_contact=dl.score_contact or 0.0,
-            score_sources=dl.score_sources or 0.0,
-            score_engagement=dl.score_engagement or 0.0,
-            score_profile=dl.score_profile or 0.0,
+            enriched_from=dl.enriched_from or "",
+            confidence_score=dl.confidence_score or 0.0,
             scraped_at=dl.scraped_at or "",
         )
         row = lead_to_leadsflow(dataclass_lead, keyword=keyword, country=country)
@@ -192,12 +233,7 @@ def build_excel_bytes(rows: List[dict]) -> bytes:
         notes_idx = LEADSFLOW_COLUMNS.index("Additional Notes")
 
         for i, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row), 1):
-            notes_val = str(row[notes_idx].value or "")
             fill = alt[i % 2]
-            for lbl, tfill in tier_fills.items():
-                if f"Tier {lbl}" in notes_val:
-                    fill = tfill
-                    break
             for cell in row:
                 cell.fill = fill
                 cell.font = bfont

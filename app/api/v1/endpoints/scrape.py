@@ -18,7 +18,7 @@ router = APIRouter()
 
 
 # ── Valid sources (mirrors orchestrator.SOURCES) ──────────────────────────────
-ALL_SOURCES = ["google", "yelp", "yellowpages", "bbb",
+ALL_SOURCES = ["google", "yelp", "yellowpages", "bbb", "sulekha",
                "linkedin", "facebook", "instagram", "twitter", "apollo"]
 DEFAULT_SOURCES = ["google", "yelp", "yellowpages", "bbb"]
 SOCIAL_SOURCES = ["linkedin", "facebook", "instagram", "twitter"]
@@ -68,6 +68,7 @@ async def start_scrape(
         max_per_source=request.max_per_source,
         min_score=request.min_score,
         country=request.country,
+        user_id=request.user_id,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
     )

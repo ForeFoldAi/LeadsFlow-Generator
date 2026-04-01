@@ -26,24 +26,9 @@ class LeadRead(BaseModel):
     state: str = ""
     zip_code: str = ""
 
-    # Reputation
-    rating: float = 0.0
-    reviews: int = 0
-    hours: str = ""
-
     # Source tracking
     sources: str = ""
     source_urls: str = ""
-
-    # Scoring
-    lead_score: float = 0.0
-    tier: str = ""
-    score_rating: float = 0.0
-    score_reviews: float = 0.0
-    score_contact: float = 0.0
-    score_sources: float = 0.0
-    score_engagement: float = 0.0
-    score_profile: float = 0.0
 
     # Meta
     scraped_at: str = ""

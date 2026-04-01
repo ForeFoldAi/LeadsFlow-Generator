@@ -1,5 +1,5 @@
 """
-FastAPI application factory (no-DB version).
+FastAPI application factory.
 
 Swagger UI  → http://localhost:8000/docs
 ReDoc       → http://localhost:8000/redoc

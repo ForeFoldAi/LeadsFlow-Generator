@@ -31,8 +31,6 @@ def _build_response(session_id: str, data: session_store.SessionData) -> Generat
             email=l.email or "",
             city=l.city or "",
             category=l.category or "",
-            lead_score=l.lead_score or 0.0,
-            tier=l.tier or "",
             sources=l.sources or "",
             website=l.website or "",
             rating=l.rating or 0.0,

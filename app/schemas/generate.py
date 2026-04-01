@@ -36,8 +36,6 @@ class LeadSummary(BaseModel):
     email: str
     city: str
     category: str
-    lead_score: float
-    tier: str
     sources: str
     website: str
     rating: float

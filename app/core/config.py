@@ -1,7 +1,8 @@
 """
 Application settings — loaded from environment / .env file.
 """
-from typing import List
+from typing import List, Union
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,8 +18,18 @@ class Settings(BaseSettings):
     # SQLite (default, dev).  Switch to postgresql+asyncpg://... for production.
     DATABASE_URL: str = "sqlite+aiosqlite:///./leads.db"
 
-    # ── CORS ──────────────────────────────────────────────────────────────────
-    CORS_ORIGINS: List[str] = ["*"]
+    # ── Server / CORS ─────────────────────────────────────────────────────────
+    PORT: int = 9000
+    CORS_ORIGINS: Union[List[str], str] = ["*"]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",")]
+        elif isinstance(v, list):
+            return v
+        return [v]
 
     # ── API keys ──────────────────────────────────────────────────────────────
     APOLLO_API_KEY: str = ""

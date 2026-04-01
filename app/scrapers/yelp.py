@@ -20,7 +20,7 @@ class YelpScraper:
         leads: list[Lead] = []
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=headless)
+            browser = await p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--single-process"])
             ctx = await browser.new_context(
                 viewport={"width": 1280, "height": 900},
                 user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",

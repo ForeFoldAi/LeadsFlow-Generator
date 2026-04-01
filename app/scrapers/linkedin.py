@@ -74,7 +74,7 @@ class LinkedInScraper:
         print(f"    Searching: {keyword} | City: {target_city} | geo_urn: {geo_urn or 'text-only'}")
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=headless)
+            browser = await p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--single-process"])
             ctx = await browser.new_context(
                 viewport={"width": 1280, "height": 900},
                 user_agent=(

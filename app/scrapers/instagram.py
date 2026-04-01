@@ -60,7 +60,7 @@ class InstagramScraper:
         leads: list[Lead] = []
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=headless)
+            browser = await p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--single-process"])
             ctx = await browser.new_context(
                 viewport={"width": 1280, "height": 900},
                 user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "

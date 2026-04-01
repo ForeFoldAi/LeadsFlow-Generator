@@ -315,7 +315,16 @@ class BaseScraper:
 
     def _launch_kwargs(self, headless: bool = True) -> dict:
         """Build Playwright browser.launch() kwargs, including proxy if set."""
-        kwargs: dict = {"headless": headless}
+        kwargs: dict = {
+            "headless": headless,
+            "args": [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--single-process",
+            ],
+        }
         if self.proxy:
             kwargs["proxy"] = {"server": self.proxy}
         return kwargs

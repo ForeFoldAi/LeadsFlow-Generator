@@ -3,7 +3,6 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl \
     && rm -rf /var/lib/apt/lists/*
@@ -17,21 +16,21 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Playwright system dependencies (Chromium)
+# Install Playwright's own system dependencies (version-aware, covers libXfixes and all others)
+# --with-deps is the only reliable way to get the full Chromium dependency tree on Debian/slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget curl gnupg \
-    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
-    libgbm1 libasound2 libatspi2.0-0 libxshmfence1 \
-    libx11-xcb1 libxcb-dri3-0 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy installed packages from builder
+# Copy installed Python packages from builder
 COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
-# Install Playwright Chromium browser
-RUN playwright install chromium
+# Pin browser install location so it survives any env var differences at runtime
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# Install Chromium + ALL required system libraries in one go
+RUN playwright install --with-deps chromium
 
 # Copy application code
 COPY . .
@@ -41,5 +40,4 @@ RUN mkdir -p /app/exports
 
 EXPOSE 9000
 
-# Run migrations then start server
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-9000}"]
